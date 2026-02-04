@@ -172,20 +172,20 @@ const MyPage = () => {
           {isSignUp && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">닉네임</label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2">
                 <input
                   type="text"
                   required
                   value={nickname}
                   onChange={(e) => { setNickname(e.target.value); setIsNicknameVerified(false); }}
-                  className="flex-1 px-4 py-3 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 outline-none transition"
                   placeholder="닉네임 입력"
                 />
                 <button
                   type="button"
                   onClick={checkNickname}
                   disabled={isNicknameVerified || !nickname}
-                  className={`px-4 py-2 text-sm font-bold rounded-xl transition ${
+                  className={`w-full px-4 py-3 text-sm font-bold rounded-xl transition ${
                     isNicknameVerified 
                       ? 'bg-green-100 text-green-600 cursor-default' 
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
