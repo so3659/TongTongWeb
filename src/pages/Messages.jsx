@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { PaperAirplaneIcon, UserCircleIcon } from '@heroicons/react/24/solid';
 import { EllipsisHorizontalIcon } from '@heroicons/react/24/outline';
@@ -9,16 +10,37 @@ const Messages = () => {
   const { user } = useAuth();
   const [conversations, setConversations] = useState([]);
   const [activeChatUser, setActiveChatUser] = useState(null); 
+  const [myProfile, setMyProfile] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [isPartnerLeft, setIsPartnerLeft] = useState(false);
   const scrollRef = useRef();
 
-  // 1. Fetch Conversations
+  // 1. Fetch Conversations & My Profile
   useEffect(() => {
-    if (user) fetchConversations();
+    if (user) {
+      fetchConversations();
+      fetchMyProfile();
+    }
   }, [user]);
+
+  // Sync activeChatUser with the latest data from conversations list
+  useEffect(() => {
+    if (activeChatUser && conversations.length > 0) {
+      const updated = conversations.find(c => c.roomId === activeChatUser.roomId);
+      if (updated) setActiveChatUser(updated);
+    }
+  }, [conversations]);
+
+  const fetchMyProfile = async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('nickname, avatar_url')
+      .eq('id', user.id)
+      .single();
+    if (data) setMyProfile(data);
+  };
 
   // 2. Realtime Subscription
   useEffect(() => {
@@ -28,9 +50,7 @@ const Messages = () => {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
         fetchConversations(); 
         
-        // If the message is for current active chat
         if (activeChatUser && (payload.new.room_id === activeChatUser.roomId)) {
-          // IMPORTANT: Only add if sender is NOT me to prevent duplication with Optimistic UI
           if (payload.new.sender_id !== user.id) {
             setMessages(prev => [...prev, payload.new]);
             if (payload.new.receiver_id === user.id) {
@@ -60,7 +80,7 @@ const Messages = () => {
       markAllAsRead(activeChatUser.roomId);
       checkPartnerStatus(activeChatUser.roomId);
     }
-  }, [activeChatUser]);
+  }, [activeChatUser?.roomId]); // Only track roomId change to avoid loops
 
   const checkPartnerStatus = async (roomId) => {
     const { data } = await supabase
@@ -82,11 +102,15 @@ const Messages = () => {
           room_id,
           chat_rooms (
             is_anonymous,
+            related_post_id,
+            target_is_anonymous,
+            posts:related_post_id (title, author_id, is_anonymous),
             messages (
               content,
               created_at,
               is_read,
-              sender_id
+              sender_id,
+              is_anonymous
             )
           )
         `)
@@ -94,6 +118,26 @@ const Messages = () => {
         .is('left_at', null);
 
       if (error) throw error;
+
+      // Fetch "Real" status for these rooms directly to avoid nested query limits/sorting issues
+      const myRoomIds = myRooms.map(r => r.room_id);
+      let realSendersByRoom = {};
+      
+      if (myRoomIds.length > 0) {
+        const { data: realData } = await supabase
+          .from('messages')
+          .select('room_id, sender_id')
+          .in('room_id', myRoomIds)
+          .eq('is_anonymous', false)
+          .neq('sender_id', user.id);
+
+        if (realData) {
+          realData.forEach(m => {
+            if (!realSendersByRoom[m.room_id]) realSendersByRoom[m.room_id] = new Set();
+            realSendersByRoom[m.room_id].add(m.sender_id);
+          });
+        }
+      }
 
       const formattedConversations = await Promise.all(myRooms.map(async (item) => {
         const room = item.chat_rooms;
@@ -107,8 +151,11 @@ const Messages = () => {
         if (!partnerData) return null;
 
         const roomMessages = room.messages || [];
-        roomMessages.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        const lastMessage = roomMessages[0];
+        const sortedMessages = [...roomMessages].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        const lastMessage = sortedMessages[sortedMessages.length - 1];
+        const firstMessage = sortedMessages[0];
+
+        const postInfo = Array.isArray(room.posts) ? room.posts[0] : room.posts;
 
         let displayUser = {
           id: partnerData.user_id,
@@ -116,17 +163,61 @@ const Messages = () => {
           avatar_url: partnerData.profiles?.avatar_url
         };
 
-        if (room.is_anonymous) {
-          displayUser.nickname = '익명';
-          displayUser.avatar_url = null;
+        const initiatorId = firstMessage?.sender_id;
+        const iAmInitiator = initiatorId === user.id;
+
+        // --- CORE ANONYMITY LOGIC ---
+        
+        // 1. My Anonymity (for sending replies)
+        const myMessages = roomMessages.filter(m => m.sender_id === user.id);
+        const iSentAnon = myMessages.some(m => m.is_anonymous);
+        const iSentReal = myMessages.some(m => !m.is_anonymous);
+        
+        let amIAnonymous = false;
+        if (iSentAnon) amIAnonymous = true;
+        else if (iSentReal) amIAnonymous = false;
+        else {
+          // If haven't sent any message yet, use room/context default
+          amIAnonymous = iAmInitiator ? room.is_anonymous : (room.related_post_id && !(postInfo?.author_id === user.id && !postInfo?.is_anonymous));
+        }
+
+        // 2. Partner's Anonymity (for Sidebar/Header Display)
+        const partnerMessages = roomMessages.filter(m => m.sender_id === partnerData.user_id);
+        const partnerSentAnon = partnerMessages.some(m => m.is_anonymous);
+        
+        // Check real status from the separate query (authoritative source)
+        const partnerSentReal = realSendersByRoom[item.room_id]?.has(partnerData.user_id);
+        
+        // Context-based protection
+        const partnerIsAnonAuthor = room.related_post_id && postInfo?.author_id === partnerData.user_id && postInfo?.is_anonymous;
+        const partnerIsAnonCommenter = room.related_post_id && partnerData.user_id !== postInfo?.author_id;
+
+        const targetIsAnon = room.target_is_anonymous;
+        let isPartnerAnonymous = false;
+        
+        if (targetIsAnon === false && iAmInitiator) {
+          isPartnerAnonymous = false; // Target is explicitly Real
+        } else if (partnerSentReal) {
+          isPartnerAnonymous = false; // Revealed by real message
+        } else if (partnerSentAnon || partnerIsAnonAuthor) {
+          isPartnerAnonymous = true; // Stay anonymous
+        } else if (partnerIsAnonCommenter) {
+          isPartnerAnonymous = true; // Initial protection for commenter
+        } else {
+          // Fallback to room initiator choice
+          isPartnerAnonymous = !iAmInitiator ? room.is_anonymous : false;
         }
 
         const unreadCount = roomMessages.filter(m => m.sender_id !== user.id && !m.is_read).length;
 
         return {
           roomId: item.room_id,
-          isAnonymous: room.is_anonymous,
-          user: displayUser,
+          isPartnerAnonymous, 
+          targetIsAnonymous: room.target_is_anonymous, // Add this field
+          amIAnonymous,
+          relatedPost: postInfo,
+          relatedPostId: room.related_post_id,
+          user: displayUser, 
           lastMessage: lastMessage || { content: '대화가 없습니다.', created_at: new Date().toISOString() },
           unreadCount
         };
@@ -145,7 +236,6 @@ const Messages = () => {
   };
 
   const fetchChatHistory = async (roomId) => {
-    // 1. Get my visibility scope
     const { data: myPart } = await supabase
       .from('chat_participants')
       .select('visible_from')
@@ -155,12 +245,11 @@ const Messages = () => {
     
     const visibleFrom = myPart?.visible_from || '1970-01-01';
 
-    // 2. Fetch messages within scope
     const { data, error } = await supabase
       .from('messages')
       .select('*')
       .eq('room_id', roomId)
-      .gte('created_at', visibleFrom) // Only show messages after I joined/re-joined
+      .gte('created_at', visibleFrom) 
       .order('created_at', { ascending: true });
 
     if (!error) setMessages(data || []);
@@ -202,7 +291,6 @@ const Messages = () => {
     e.preventDefault();
     if (!inputText.trim() || !activeChatUser) return;
 
-    // Check Block Status (Has receiver blocked me?)
     const { data: blockCheck } = await supabase
       .from('user_blocks')
       .select('id')
@@ -224,7 +312,8 @@ const Messages = () => {
       content: text,
       created_at: new Date().toISOString(),
       is_read: false,
-      room_id: activeChatUser.roomId
+      room_id: activeChatUser.roomId,
+      is_anonymous: activeChatUser.amIAnonymous
     };
     setMessages(prev => [...prev, tempMsg]);
 
@@ -232,7 +321,8 @@ const Messages = () => {
       sender_id: user.id,
       receiver_id: activeChatUser.user.id,
       content: text,
-      room_id: activeChatUser.roomId
+      room_id: activeChatUser.roomId,
+      is_anonymous: activeChatUser.amIAnonymous
     });
 
     if (error) {
@@ -244,6 +334,12 @@ const Messages = () => {
   };
 
   if (!user) return <div className="text-center py-40">로그인이 필요합니다.</div>;
+
+  const firstMessage = messages.length > 0 ? messages[0] : null;
+  // Fallback: If no messages, assume I am initiator if I just created it? 
+  // Ideally we need room creator info, but usually empty room implies I created it via modal.
+  // However, for rendering bubbles, messages exist.
+  const iAmInitiator = firstMessage ? firstMessage.sender_id === user.id : true; 
 
   return (
     <div className="max-w-6xl mx-auto px-4 pt-32 pb-20 h-[calc(100vh-80px)]">
@@ -268,7 +364,7 @@ const Messages = () => {
                 >
                   <div className="relative">
                     <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 overflow-hidden">
-                      {c.user.avatar_url ? (
+                      {!c.isPartnerAnonymous && c.user.avatar_url ? (
                         <img src={c.user.avatar_url} alt="avatar" className="w-full h-full object-cover" />
                       ) : (
                         <UserCircleIcon className="w-full h-full" />
@@ -282,7 +378,9 @@ const Messages = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-baseline mb-0.5">
-                      <h3 className="font-bold text-slate-900 text-sm truncate">{c.user.nickname || '알 수 없음'}</h3>
+                      <h3 className="font-bold text-slate-900 text-sm truncate">
+                        {c.isPartnerAnonymous ? '익명' : (c.user.nickname || '알 수 없음')}
+                      </h3>
                       <span className="text-[10px] text-slate-400">{format(new Date(c.lastMessage.created_at), 'MM.dd')}</span>
                     </div>
                     <p className={`text-xs truncate ${c.unreadCount > 0 ? 'font-bold text-slate-800' : 'text-slate-500'}`}>
@@ -305,10 +403,12 @@ const Messages = () => {
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                   </button>
                   <div className="flex flex-col">
-                    <span className="font-bold text-slate-900 text-lg flex items-center gap-2">
-                      {activeChatUser.user.nickname}
-                      {activeChatUser.isAnonymous && <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">익명</span>}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 text-lg">
+                        {activeChatUser.isPartnerAnonymous ? '익명' : activeChatUser.user.nickname}
+                      </span>
+                      {activeChatUser.isPartnerAnonymous && <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">익명</span>}
+                    </div>
                   </div>
                 </div>
                 <button onClick={handleLeaveChat} className="text-slate-400 hover:text-red-500 transition" title="채팅방 나가기">
@@ -317,8 +417,16 @@ const Messages = () => {
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={scrollRef}>
+                {activeChatUser.relatedPost && (
+                  <div className="text-center my-6">
+                    <span className="text-[11px] text-slate-500 bg-slate-100 px-4 py-1.5 rounded-full border border-slate-200/50">
+                      게시글 <span className="font-bold text-slate-700">{activeChatUser.relatedPost.title}</span> 을 통해 시작된 쪽지입니다
+                    </span>
+                  </div>
+                )}
                 {messages.map((msg, idx) => {
                   const isMe = msg.sender_id === user.id;
+                  const isMsgAnonymous = msg.is_anonymous;
                   const showDate = idx === 0 || format(new Date(messages[idx-1].created_at), 'yyyy-MM-dd') !== format(new Date(msg.created_at), 'yyyy-MM-dd');
                   
                   return (
@@ -330,23 +438,71 @@ const Messages = () => {
                           </span>
                         </div>
                       )}
-                      <div className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
-                          isMe 
-                            ? 'bg-brand-600 text-white rounded-tr-none' 
-                            : 'bg-white text-slate-800 border border-slate-100 rounded-tl-none'
-                        }`}>
-                          {msg.content}
-                        </div>
-                        <div className={`flex flex-col justify-end ml-2 text-[10px] text-slate-400 ${isMe ? 'order-first mr-2 ml-0 items-end' : ''}`}>
-                          <span>{format(new Date(msg.created_at), 'HH:mm')}</span>
-                          {isMe && (
-                            <span className={msg.is_read ? 'text-brand-500 font-bold' : ''}>
-                              {msg.is_read ? '읽음' : '1'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                      
+                      {/* Logic to determine if this bubble belongs to the Target User (who should be Real in Real-Target Room) */}
+                      {/* If isMe: I am target if I am NOT initiator. */}
+                      {/* If !isMe: Partner is target if I AM initiator. */}
+                      {(() => {
+                        const isTargetUser = isMe ? !iAmInitiator : iAmInitiator;
+                        const shouldShowReal = !isMsgAnonymous || (activeChatUser.targetIsAnonymous === false && isTargetUser);
+
+                        return (
+                          <div className={`flex items-end gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                            {!isMe && (
+                              <div className="w-8 h-8 rounded-full bg-slate-200 flex-shrink-0 overflow-hidden mb-1">
+                                {shouldShowReal && activeChatUser.user.avatar_url ? (
+                                  <img src={activeChatUser.user.avatar_url} alt="avatar" className="w-full h-full object-cover" />
+                                ) : (
+                                  <UserCircleIcon className="w-full h-full text-slate-400" />
+                                )}
+                              </div>
+                            )}
+
+                            <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                              <span className="text-[10px] text-slate-400 mb-1 font-medium px-1">
+                                {isMe 
+                                  ? (shouldShowReal ? myProfile?.nickname : '익명')
+                                  : (shouldShowReal ? activeChatUser.user.nickname : '익명')
+                                }
+                              </span>
+                              <div className="flex items-end gap-2">
+                                {isMe && (
+                                  <div className="flex flex-col items-end text-[10px] text-slate-400">
+                                    <span className={msg.is_read ? 'text-brand-500 font-bold' : ''}>
+                                      {msg.is_read ? '읽음' : '1'}
+                                    </span>
+                                    <span>{format(new Date(msg.created_at), 'HH:mm')}</span>
+                                  </div>
+                                )}
+                                
+                                <div className={`max-w-[200px] md:max-w-[300px] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm ${
+                                  isMe 
+                                    ? 'bg-brand-600 text-white rounded-tr-none' 
+                                    : 'bg-white text-slate-800 border border-slate-100 rounded-tl-none'
+                                }`}>
+                                  {msg.content}
+                                </div>
+
+                                {!isMe && (
+                                  <div className="text-[10px] text-slate-400">
+                                    <span>{format(new Date(msg.created_at), 'HH:mm')}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {isMe && (
+                              <div className="w-8 h-8 rounded-full bg-slate-200 flex-shrink-0 overflow-hidden mb-1">
+                                {shouldShowReal && myProfile?.avatar_url ? (
+                                  <img src={myProfile.avatar_url} alt="my avatar" className="w-full h-full object-cover" />
+                                ) : (
+                                  <UserCircleIcon className="w-full h-full text-slate-400" />
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </React.Fragment>
                   );
                 })}

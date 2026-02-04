@@ -172,13 +172,47 @@ const Navbar = () => {
             )}
           </div>
 
-          {/* Mobile Menu Button */}
-          <button 
-            className="md:hidden p-2 text-slate-600"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          >
-            {isMobileMenuOpen ? <XMarkIcon className="w-6 h-6" /> : <Bars3Icon className="w-6 h-6" />}
-          </button>
+          {/* Mobile Menu & Icons */}
+          <div className="flex md:hidden items-center gap-1">
+            {user && (
+              <>
+                {/* Notification Bell */}
+                <Link 
+                  to="/notifications" 
+                  className="relative p-2 text-slate-500 hover:text-brand-600 transition-colors"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <BellIcon className="w-6 h-6" />
+                  {notiCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 flex h-4 min-w-[1rem] px-1 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white">
+                      {notiCount > 99 ? '99+' : notiCount}
+                    </span>
+                  )}
+                </Link>
+
+                {/* Message Icon */}
+                <Link 
+                  to="/messages" 
+                  className="relative p-2 text-slate-500 hover:text-brand-600 transition-colors"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <EnvelopeIcon className="w-6 h-6" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 flex h-4 min-w-[1rem] px-1 items-center justify-center rounded-full bg-brand-500 text-[10px] font-bold text-white ring-2 ring-white">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </Link>
+              </>
+            )}
+
+            <button 
+              className="p-2 text-slate-600"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            >
+              {isMobileMenuOpen ? <XMarkIcon className="w-6 h-6" /> : <Bars3Icon className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
       </nav>
 

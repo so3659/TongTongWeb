@@ -284,8 +284,35 @@ const PostDetail = () => {
 
   const handleDelete = async () => {
     if (!window.confirm('정말 삭제하시겠습니까?')) return;
-    const { error } = await supabase.from('posts').delete().eq('id', id);
-    if (!error) navigate('/board');
+    
+    try {
+      // 1. Storage Cleanup (Media URLs)
+      if (post.media_urls && post.media_urls.length > 0) {
+        const imagePaths = post.media_urls.map(url => {
+          const parts = url.split('/post-images/');
+          return parts[parts.length - 1];
+        });
+        await supabase.storage.from('post-images').remove(imagePaths);
+      }
+
+      // 2. Storage Cleanup (Attachments)
+      if (post.attachments && post.attachments.length > 0) {
+        const attachmentPaths = post.attachments.map(file => {
+          const parts = file.url.split('/post-attachments/');
+          return parts[parts.length - 1];
+        });
+        await supabase.storage.from('post-attachments').remove(attachmentPaths);
+      }
+
+      // 3. Delete Post Record
+      const { error } = await supabase.from('posts').delete().eq('id', id);
+      if (!error) navigate('/board');
+      else throw error;
+      
+    } catch (error) {
+      console.error('Delete Error:', error);
+      alert('삭제 중 오류가 발생했습니다.');
+    }
   };
 
   const handleCommentDelete = async (commentId) => {
@@ -372,9 +399,12 @@ const PostDetail = () => {
 
             {isAuthor && (
               <div className="flex gap-2">
-                <button className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-full transition">
+                <Link 
+                  to={`/board/${id}/edit`}
+                  className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-full transition"
+                >
                   <PencilIcon className="w-5 h-5" />
-                </button>
+                </Link>
                 <button onClick={handleDelete} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition">
                   <TrashIcon className="w-5 h-5" />
                 </button>
@@ -541,6 +571,7 @@ const PostDetail = () => {
         receiverName={messageTarget.name}
         senderId={user?.id}
         isAnonymous={messageTarget.isAnonymous}
+        postId={id}
       />
     </div>
   );

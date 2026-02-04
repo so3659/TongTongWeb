@@ -9,6 +9,7 @@ const Home = React.lazy(() => import('./pages/Home'));
 const About = React.lazy(() => import('./pages/About'));
 const Board = React.lazy(() => import('./pages/Board'));
 const PostWrite = React.lazy(() => import('./pages/PostWrite'));
+const PostEdit = React.lazy(() => import('./pages/PostEdit'));
 const PostDetail = React.lazy(() => import('./pages/PostDetail'));
 const Calendar = React.lazy(() => import('./pages/Calendar'));
 const Messages = React.lazy(() => import('./pages/Messages'));
@@ -78,6 +79,7 @@ function App() {
               <Route path="/board" element={<Board />} />
               <Route path="/board/write" element={<PostWrite />} />
               <Route path="/board/:id" element={<PostDetail />} />
+              <Route path="/board/:id/edit" element={<PostEdit />} />
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/messages" element={<Messages />} />
               <Route path="/notifications" element={<Notifications />} />

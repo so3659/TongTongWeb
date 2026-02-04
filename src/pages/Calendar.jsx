@@ -4,7 +4,7 @@ import { format, isSameDay, parseISO } from 'date-fns';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { useLocation } from 'react-router-dom';
-import { PlusIcon, MapPinIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, MapPinIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
 import 'react-calendar/dist/Calendar.css';
 import '../styles/calendar.css';
 
@@ -23,6 +23,7 @@ const CalendarPage = () => {
   const [schedules, setSchedules] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Form State
@@ -61,35 +62,73 @@ const CalendarPage = () => {
     setLoading(false);
   };
 
-  const handleAddSchedule = async (e) => {
+  const handleOpenAddModal = () => {
+    setEditingSchedule(null);
+    setFormData({
+      title: '',
+      description: '',
+      start_date: format(date, 'yyyy-MM-dd'),
+      start_time: '18:00',
+      event_type: '정기모임',
+      location: ''
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (schedule) => {
+    setEditingSchedule(schedule);
+    const startDate = parseISO(schedule.start_date);
+    setFormData({
+      title: schedule.title,
+      description: schedule.description || '',
+      start_date: format(startDate, 'yyyy-MM-dd'),
+      start_time: format(startDate, 'HH:mm'),
+      event_type: schedule.event_type,
+      location: schedule.location || ''
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return alert('로그인이 필요합니다.');
 
-    // Combine date and time
     const startDateTime = new Date(`${formData.start_date}T${formData.start_time}`);
-    const endDateTime = new Date(startDateTime.getTime() + 2 * 60 * 60 * 1000); // Default 2 hours
+    const endDateTime = new Date(startDateTime.getTime() + 2 * 60 * 60 * 1000);
 
-    const { error } = await supabase.from('schedules').insert([{
+    const payload = {
       title: formData.title,
       description: formData.description,
       start_date: startDateTime.toISOString(),
       end_date: endDateTime.toISOString(),
       event_type: formData.event_type,
       location: formData.location,
-      created_by: user.id
-    }]);
+    };
+
+    let error;
+    if (editingSchedule) {
+      const { error: updateError } = await supabase
+        .from('schedules')
+        .update(payload)
+        .eq('id', editingSchedule.id);
+      error = updateError;
+    } else {
+      const { error: insertError } = await supabase
+        .from('schedules')
+        .insert([{ ...payload, created_by: user.id }]);
+      error = insertError;
+    }
 
     if (error) {
-      alert('일정 추가 실패: ' + error.message);
+      alert('일정 처리 실패: ' + error.message);
     } else {
       fetchSchedules();
       setIsModalOpen(false);
-      setFormData({ ...formData, title: '', description: '', location: '' });
+      setEditingSchedule(null);
     }
   };
 
   const handleDelete = async (schedule) => {
-    // Allow delete if Admin/Master OR if I created it
     const isOwner = user && user.id === schedule.created_by;
     if (!isAdmin && !isOwner) {
       alert('삭제 권한이 없습니다.');
@@ -129,10 +168,7 @@ const CalendarPage = () => {
         </div>
         {user && (
           <button 
-            onClick={() => {
-              setFormData({ ...formData, start_date: format(date, 'yyyy-MM-dd') });
-              setIsModalOpen(true);
-            }}
+            onClick={handleOpenAddModal}
             className="btn-primary flex items-center gap-2 text-sm px-4 py-2"
           >
             <PlusIcon className="w-4 h-4" />
@@ -167,7 +203,7 @@ const CalendarPage = () => {
                   <div key={schedule.id} className="relative pl-4 border-l-4 border-brand-200 py-1">
                     <div className={`absolute left-[-4px] top-2 w-1 h-full rounded-full ${EVENT_COLORS[schedule.event_type].replace('bg-', 'bg-opacity-100 ')}`} />
                     <div className="flex justify-between items-start">
-                      <div>
+                      <div className="flex-1">
                         <span className={`text-xs font-bold text-white px-2 py-0.5 rounded-full mb-1 inline-block ${EVENT_COLORS[schedule.event_type]}`}>
                           {schedule.event_type}
                         </span>
@@ -184,9 +220,14 @@ const CalendarPage = () => {
                         </p>
                       </div>
                       {(isAdmin || (user && user.id === schedule.created_by)) && (
-                        <button onClick={() => handleDelete(schedule)} className="text-red-400 hover:text-red-600">
-                          <TrashIcon className="w-4 h-4" />
-                        </button>
+                        <div className="flex gap-1">
+                          <button onClick={() => handleOpenEditModal(schedule)} className="text-slate-400 hover:text-brand-600 p-1">
+                            <PencilIcon className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDelete(schedule)} className="text-slate-400 hover:text-red-600 p-1">
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -199,12 +240,12 @@ const CalendarPage = () => {
         </div>
       </div>
 
-      {/* Admin Modal */}
+      {/* Schedule Modal (Add/Edit) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h3 className="text-xl font-bold mb-4">새 일정 추가</h3>
-            <form onSubmit={handleAddSchedule} className="space-y-4">
+            <h3 className="text-xl font-bold mb-4">{editingSchedule ? '일정 수정' : '새 일정 추가'}</h3>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <input 
                 type="text" placeholder="일정 제목" required 
                 className="w-full p-3 border rounded-lg"
@@ -243,7 +284,9 @@ const CalendarPage = () => {
               />
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-500">취소</button>
-                <button type="submit" className="px-4 py-2 bg-brand-600 text-white rounded-lg">추가하기</button>
+                <button type="submit" className="px-4 py-2 bg-brand-600 text-white rounded-lg">
+                  {editingSchedule ? '저장하기' : '추가하기'}
+                </button>
               </div>
             </form>
           </div>

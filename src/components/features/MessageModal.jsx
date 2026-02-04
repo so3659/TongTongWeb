@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { XMarkIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 
-const MessageModal = ({ isOpen, onClose, receiverId, receiverName, senderId, isAnonymous = false }) => {
+const MessageModal = ({ isOpen, onClose, receiverId, receiverName, senderId, isAnonymous: initialAnonymous = false, postId = null }) => {
   const [content, setContent] = useState('');
+  const [isAnonymous, setIsAnonymous] = useState(initialAnonymous);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setIsAnonymous(initialAnonymous);
+  }, [initialAnonymous, isOpen]);
 
   if (!isOpen) return null;
 
@@ -14,72 +19,101 @@ const MessageModal = ({ isOpen, onClose, receiverId, receiverName, senderId, isA
     setLoading(true);
 
     try {
-      // 0. Check Block Status (Has receiver blocked me?)
+      // 0. Check Block Status
       const { data: blockCheck, error: blockError } = await supabase
         .from('user_blocks')
         .select('id')
         .eq('blocker_id', receiverId)
         .eq('blocked_id', senderId)
-        .maybeSingle(); // Use maybeSingle to avoid error on no rows
+        .maybeSingle();
       
       if (blockError) throw blockError;
+      if (blockCheck) throw new Error('상대방이 쪽지 수신을 차단했습니다.');
+
+      // 1. Determine Room Logic
       
-      if (blockCheck) {
-        throw new Error('상대방이 쪽지 수신을 차단했습니다.');
+      let targetRoomPostId = null;
+      let targetIsAnonymousRoom = false;
+      let targetInitAnonymous = false; // New key for Target's Anonymity
+
+      // Case 4: Real (Author/Commenter) - Real (Sender) -> General DM
+      // Reuses existing General DM room regardless of post
+      if (!isAnonymous && !initialAnonymous) {
+          targetRoomPostId = null;
+          targetIsAnonymousRoom = false;
+          targetInitAnonymous = false;
+      } else {
+          // Case 1, 2, 3: Any Anonymous interaction -> Post-Bound Room
+          targetRoomPostId = postId;
+          
+          // Use BOTH Sender's anonymity AND Target's anonymity to differentiate rooms
+          // Sender Anon -> is_anonymous = true
+          // Target Anon -> target_is_anonymous = true
+          targetIsAnonymousRoom = isAnonymous;
+          targetInitAnonymous = initialAnonymous;
       }
 
-      // 1. Find existing ACTIVE room where BOTH are participants
-      const { data: myRooms } = await supabase
+      // 2. Find existing room where I was the initiator with the SAME anonymity choice
+      // Note: Requires 'target_is_anonymous' column in chat_rooms table
+      const { data: myOwnedRooms } = await supabase
         .from('chat_participants')
-        .select('room_id, chat_rooms!inner(is_anonymous)')
+        .select('room_id, chat_rooms!inner(is_anonymous, related_post_id, created_at, target_is_anonymous)')
         .eq('user_id', senderId)
-        .eq('chat_rooms.is_anonymous', isAnonymous)
         .is('left_at', null);
 
       let roomId = null;
+      if (myOwnedRooms && myOwnedRooms.length > 0) {
+        // Filter: Must match postId, is_anonymous, AND target_is_anonymous
+        const matchedRoom = myOwnedRooms.find(r => 
+          r.chat_rooms.related_post_id == targetRoomPostId && 
+          r.chat_rooms.is_anonymous === targetIsAnonymousRoom &&
+          // Handle legacy rooms where target_is_anonymous might be null (treat as false/match if targetInit is false?)
+          // For strict separation, we compare equality.
+          (r.chat_rooms.target_is_anonymous === targetInitAnonymous || (!r.chat_rooms.target_is_anonymous && !targetInitAnonymous))
+        );
 
-      if (myRooms && myRooms.length > 0) {
-        for (const r of myRooms) {
-          // Check if partner is ALSO active in this room
+        if (matchedRoom) {
+          // Check if the other person is also in THIS specific room
           const { data: partner } = await supabase
             .from('chat_participants')
             .select('user_id')
-            .eq('room_id', r.room_id)
+            .eq('room_id', matchedRoom.room_id)
             .eq('user_id', receiverId)
             .is('left_at', null) 
             .maybeSingle();
           
           if (partner) {
-            roomId = r.room_id;
-            break;
+            roomId = matchedRoom.room_id;
           }
         }
       }
 
-      // 2. Create NEW Room if no shared active room found
+      // 3. Create NEW Room if no exact match found
       if (!roomId) {
         const { data: newRoom, error: roomError } = await supabase
           .from('chat_rooms')
-          .insert({ is_anonymous: isAnonymous })
+          .insert({ 
+            is_anonymous: targetIsAnonymousRoom,
+            related_post_id: targetRoomPostId,
+            target_is_anonymous: targetInitAnonymous // Insert new field
+          })
           .select()
           .single();
-        
         if (roomError) throw roomError;
         roomId = newRoom.id;
-
-        // Add Participants
         await supabase.from('chat_participants').insert([
           { room_id: roomId, user_id: senderId },
           { room_id: roomId, user_id: receiverId }
         ]);
       } 
 
-      // 3. Send Message
+      // 4. Send Message
       const { error } = await supabase.from('messages').insert({
         sender_id: senderId,
         receiver_id: receiverId,
         content: content,
-        room_id: roomId
+        room_id: roomId,
+        is_anonymous: isAnonymous
       });
 
       if (error) throw error;
@@ -109,8 +143,19 @@ const MessageModal = ({ isOpen, onClose, receiverId, receiverName, senderId, isA
         </div>
         
         <form onSubmit={handleSend} className="p-6">
-          <div className="mb-4 text-sm text-slate-600">
-            받는 사람: <span className="font-bold text-slate-900">{receiverName}</span>
+          <div className="flex justify-between items-center mb-4">
+            <div className="text-sm text-slate-600">
+              받는 사람: <span className="font-bold text-slate-900">{receiverName}</span>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input 
+                type="checkbox" 
+                className="w-4 h-4 text-brand-600 rounded"
+                checked={isAnonymous}
+                onChange={e => setIsAnonymous(e.target.checked)}
+              />
+              <span className="text-xs text-slate-500 font-medium">익명으로 보내기</span>
+            </label>
           </div>
           
           <textarea

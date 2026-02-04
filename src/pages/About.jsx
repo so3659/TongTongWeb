@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { UserCircleIcon, ArrowRightIcon, CheckCircleIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import { supabase } from '../lib/supabaseClient';
 
 const About = () => {
@@ -9,6 +10,7 @@ const About = () => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentGen, setCurrentGen] = useState(16); // Default
+  const [selectedImage, setSelectedImage] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -81,9 +83,17 @@ const About = () => {
                 transition={{ delay: idx * 0.1 }}
                 className="flex flex-col items-center"
               >
-                <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-slate-100 mb-4 overflow-hidden border-4 border-white shadow-lg flex items-center justify-center">
+                <div 
+                  className={`w-24 h-24 md:w-32 md:h-32 rounded-full bg-slate-100 mb-4 overflow-hidden border-4 border-white shadow-lg flex items-center justify-center relative group ${person.image_url ? 'cursor-pointer' : ''}`}
+                  onClick={() => person.image_url && setSelectedImage(person.image_url)}
+                >
                   {person.image_url ? (
-                    <img src={person.image_url} alt={person.name} className="w-full h-full object-cover" />
+                    <>
+                      <img src={person.image_url} alt={person.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="text-white text-xs font-bold bg-black/30 px-2 py-1 rounded-full backdrop-blur-sm">View</span>
+                      </div>
+                    </>
                   ) : (
                     <UserCircleIcon className="w-full h-full text-slate-300" />
                   )}
@@ -145,7 +155,7 @@ const About = () => {
         </p>
       </div>
       
-      <div className="grid md:grid-cols-2 gap-8">
+      <div className="grid md:grid-cols-2 gap-8 mb-20">
         {/* Instagram Card */}
         <motion.a 
           href="https://www.instagram.com/t_tong.official/" 
@@ -206,6 +216,31 @@ const About = () => {
           </div>
         </motion.a>
       </div>
+
+      {/* Image Lightbox */}
+      <AnimatePresence>
+        {selectedImage && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 cursor-pointer"
+            onClick={() => setSelectedImage(null)}
+          >
+            <button className="absolute top-6 right-6 text-white/70 hover:text-white transition">
+              <XMarkIcon className="w-8 h-8" />
+            </button>
+            <motion.img 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              src={selectedImage} 
+              alt="Full Size" 
+              className="max-w-full max-h-screen object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()} 
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
