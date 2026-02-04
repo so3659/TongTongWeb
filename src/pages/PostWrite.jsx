@@ -72,15 +72,15 @@ const PostWrite = () => {
     const selectedFiles = Array.from(e.target.files);
     
     // Validate Count
-    if (selectedFiles.length + attachments.length > 5) {
-      alert('첨부파일은 최대 5개까지 가능합니다.');
+    if (selectedFiles.length + attachments.length > 1) {
+      alert('첨부파일은 최대 1개까지만 가능합니다.');
       return;
     }
 
-    // Validate Size (10MB)
+    // Validate Size (5MB)
     const validFiles = selectedFiles.filter(file => {
-      if (file.size > 10 * 1024 * 1024) {
-        alert(`${file.name} 파일이 10MB를 초과하여 제외되었습니다.`);
+      if (file.size > 5 * 1024 * 1024) {
+        alert(`${file.name} 파일이 5MB를 초과하여 제외되었습니다.`);
         return false;
       }
       return true;

@@ -118,13 +118,13 @@ const PostEdit = () => {
   // Attachment Logic
   const handleAttachmentChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
-    if (selectedFiles.length + newAttachments.length + existingAttachments.length > 5) {
-      alert('첨부파일은 최대 5개까지 가능합니다.');
+    if (selectedFiles.length + newAttachments.length + existingAttachments.length > 1) {
+      alert('첨부파일은 최대 1개까지만 가능합니다.');
       return;
     }
-    const validFiles = selectedFiles.filter(file => file.size <= 10 * 1024 * 1024);
+    const validFiles = selectedFiles.filter(file => file.size <= 5 * 1024 * 1024);
     if (validFiles.length < selectedFiles.length) {
-      alert('10MB를 초과하는 파일은 제외되었습니다.');
+      alert('5MB를 초과하는 파일은 제외되었습니다.');
     }
     setNewAttachments(prev => [...prev, ...validFiles]);
   };
