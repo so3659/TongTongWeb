@@ -89,6 +89,7 @@ const Navbar = () => {
   const navLinks = [
     { name: '홈', path: '/' },
     { name: '소개', path: '/about' },
+    { name: '갤러리', path: '/gallery' },
     { name: '서포터즈', path: '/supporters' },
     { name: '게시판', path: '/board' },
     { name: '일정', path: '/calendar' },

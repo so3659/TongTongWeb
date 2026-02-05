@@ -7,6 +7,7 @@ import bgMusic from './assets/audio/tong_music.mp3';
 // Lazy loading pages for performance
 const Home = React.lazy(() => import('./pages/Home'));
 const About = React.lazy(() => import('./pages/About'));
+const Gallery = React.lazy(() => import('./pages/Gallery'));
 const Board = React.lazy(() => import('./pages/Board'));
 const PostWrite = React.lazy(() => import('./pages/PostWrite'));
 const PostEdit = React.lazy(() => import('./pages/PostEdit'));
@@ -74,7 +75,9 @@ function App() {
               <Route path="/" element={<Home />} />
               <Route path="/about" element={<About />} />
               <Route path="/about/past-executives" element={<PastExecutives />} />
+              <Route path="/gallery" element={<Gallery />} />
               <Route path="/supporters" element={<Supporters />} />
+              <Route path="/admin" element={<ManageAbout />} />
               <Route path="/admin/manage-about" element={<ManageAbout />} />
               <Route path="/board" element={<Board />} />
               <Route path="/board/write" element={<PostWrite />} />

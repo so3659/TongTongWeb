@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabaseClient';
 const About = () => {
   const [executives, setExecutives] = useState([]);
   const [history, setHistory] = useState([]);
+  const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentGen, setCurrentGen] = useState(16); // Default
   const [selectedImage, setSelectedImage] = useState(null);
@@ -44,6 +45,23 @@ const About = () => {
           .order('event_date', { ascending: false }); 
         
         if (histData) setHistory(histData);
+
+        // Fetch Random Activities (using RPC for better performance/randomness)
+        const { data: actData, error: rpcError } = await supabase
+          .rpc('get_random_activities', { limit_count: 8 });
+        
+        if (!rpcError && actData) {
+          setActivities(actData);
+        } else {
+          // Fallback: If RPC fails, fetch latest 8
+          const { data: fallbackData } = await supabase
+            .from('club_activities')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(8);
+          if (fallbackData) setActivities(fallbackData);
+        }
+
       } catch (error) {
         console.error('Error fetching about data:', error);
       } finally {
@@ -116,7 +134,58 @@ const About = () => {
         </div>
       </section>
 
-      {/* 2. History Timeline */}
+      {/* 2. Activity Preview */}
+      <section className="mb-32">
+        <div className="flex justify-between items-end mb-10">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">활동 미리보기</h2>
+          </div>
+          <Link 
+            to="/gallery"
+            className="text-brand-600 font-bold text-sm hover:underline flex items-center gap-1"
+          >
+            전체 보기
+            <ArrowRightIcon className="w-4 h-4" />
+          </Link>
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="aspect-square bg-slate-100 animate-pulse rounded-2xl" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {activities.length > 0 ? activities.map((act, idx) => (
+              <motion.div
+                key={act.id}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: idx * 0.05 }}
+                className="group relative aspect-square overflow-hidden rounded-2xl bg-slate-100 cursor-pointer"
+                onClick={() => setSelectedImage(act.image_url)}
+              >
+                <img 
+                  src={act.image_url} 
+                  alt={act.title} 
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
+                  <p className="text-white text-xs font-bold truncate">{act.title}</p>
+                </div>
+              </motion.div>
+            )) : (
+              <div className="col-span-full py-20 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                <p className="text-slate-400 font-medium">등록된 활동 사진이 없습니다.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* 3. History Timeline */}
       <section className="mb-32 max-w-3xl mx-auto">
         <h2 className="text-2xl font-bold text-slate-900 mb-10 text-center">우리가 걸어온 길</h2>
         <div className="relative border-l-2 border-slate-200 ml-4 md:ml-0 space-y-10">
