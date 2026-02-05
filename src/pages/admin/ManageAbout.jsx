@@ -16,6 +16,12 @@ const ManageAbout = () => {
   const [adminList, setAdminList] = useState([]);
   const [activities, setActivities] = useState([]);
 
+  // Pagination for Activities
+  const [activityPage, setActivityPage] = useState(0);
+  const [hasMoreActivities, setHasMoreActivities] = useState(true);
+  const [loadingActivities, setLoadingActivities] = useState(false);
+  const activityObserver = useRef();
+
   // Form State
   const [activeTab, setActiveTab] = useState('executives'); // executives | history | admins | gallery
   const [editingId, setEditingId] = useState(null); // ID being edited
@@ -50,16 +56,62 @@ const ManageAbout = () => {
     setLoading(true);
     const { data: execs } = await supabase.from('club_executives').select('*').order('generation', { ascending: false });
     const { data: hists } = await supabase.from('club_history').select('*').order('event_date', { ascending: false });
-    const { data: acts } = await supabase.from('club_activities').select('*').order('created_at', { ascending: false });
-    // Fetch all staff (admins and masters) or just admins?
-    // Let's fetch 'admin' roles to manage them.
     const { data: admins } = await supabase.from('profiles').select('*').eq('role', 'admin');
     
     setExecutives(execs || []);
     setHistories(hists || []);
     setAdminList(admins || []);
-    setActivities(acts || []);
+    
+    // Reset and Load first page of activities
+    setActivityPage(0);
+    setActivities([]);
+    setHasMoreActivities(true);
+    await fetchActivitiesPage(0, true);
+    
     setLoading(false);
+  };
+
+  const fetchActivitiesPage = async (page, reset = false) => {
+    if (loadingActivities) return;
+    setLoadingActivities(true);
+    const ITEMS_PER_PAGE = 10;
+    
+    try {
+      const { data, error } = await supabase
+        .from('club_activities')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+
+      if (error) throw error;
+
+      if (data) {
+        setActivities(prev => {
+          const filtered = reset ? data : [...prev, ...data.filter(item => !prev.some(p => p.id === item.id))];
+          return filtered;
+        });
+        if (data.length < ITEMS_PER_PAGE) setHasMoreActivities(false);
+      }
+    } catch (err) {
+      console.error('Error fetching activities:', err);
+    } finally {
+      setLoadingActivities(false);
+    }
+  };
+
+  const lastActivityRef = (node) => {
+    if (loadingActivities) return;
+    if (activityObserver.current) activityObserver.current.disconnect();
+    activityObserver.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMoreActivities) {
+        setActivityPage(prev => {
+          const nextPage = prev + 1;
+          fetchActivitiesPage(nextPage);
+          return nextPage;
+        });
+      }
+    });
+    if (node) activityObserver.current.observe(node);
   };
 
   const handleImageChange = (e) => {
@@ -542,8 +594,12 @@ const ManageAbout = () => {
 
           <div className="md:col-span-2 space-y-3">
             <div className="grid grid-cols-2 gap-4">
-              {activities.map(item => (
-                <div key={item.id} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm group hover:border-brand-200 transition">
+              {activities.map((item, index) => (
+                <div 
+                  key={item.id} 
+                  ref={index === activities.length - 1 ? lastActivityRef : null}
+                  className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm group hover:border-brand-200 transition"
+                >
                   <div className="relative aspect-video rounded-lg overflow-hidden mb-3">
                     <img src={item.image_url} alt="" className="w-full h-full object-cover" />
                     <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -556,11 +612,15 @@ const ManageAbout = () => {
                     </div>
                   </div>
                   <h4 className="font-bold text-slate-800 truncate px-1">{item.title}</h4>
-                  <p className="text-[10px] text-slate-400 px-1">{new Date(item.created_at).toLocaleDateString()}</p>
                 </div>
               ))}
             </div>
-            {activities.length === 0 && (
+            {loadingActivities && (
+              <div className="flex justify-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-brand-500"></div>
+              </div>
+            )}
+            {activities.length === 0 && !loadingActivities && (
               <p className="text-center py-10 text-slate-400">등록된 활동 사진이 없습니다.</p>
             )}
           </div>
