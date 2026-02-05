@@ -16,15 +16,32 @@ const ManageAbout = () => {
   const [adminList, setAdminList] = useState([]);
   const [activities, setActivities] = useState([]);
 
-  // Pagination for Activities
+  // Pagination States
+  const [execPage, setExecPage] = useState(0);
+  const [hasMoreExecs, setHasMoreExecs] = useState(true);
+  const [loadingExecs, setLoadingExecs] = useState(false);
+  const execObserver = useRef();
+
+  const [histPage, setHistPage] = useState(0);
+  const [hasMoreHists, setHasMoreHists] = useState(true);
+  const [loadingHists, setLoadingHists] = useState(false);
+  const histObserver = useRef();
+
+  const [adminPage, setAdminPage] = useState(0);
+  const [hasMoreAdmins, setHasMoreAdmins] = useState(true);
+  const [loadingAdmins, setLoadingAdmins] = useState(false);
+  const adminObserver = useRef();
+
   const [activityPage, setActivityPage] = useState(0);
   const [hasMoreActivities, setHasMoreActivities] = useState(true);
   const [loadingActivities, setLoadingActivities] = useState(false);
   const activityObserver = useRef();
 
+  const ITEMS_PER_PAGE = 15;
+
   // Form State
-  const [activeTab, setActiveTab] = useState('executives'); // executives | history | admins | gallery
-  const [editingId, setEditingId] = useState(null); // ID being edited
+  const [activeTab, setActiveTab] = useState('executives'); 
+  const [editingId, setEditingId] = useState(null); 
   const [adminEmail, setAdminEmail] = useState('');
   
   const [execForm, setExecForm] = useState({ generation: 16, name: '', role: '', is_current: true, image_url: null });
@@ -47,72 +64,120 @@ const ManageAbout = () => {
       alert('접근 권한이 없습니다. (마스터 전용)');
       navigate('/');
     } else {
-      setIsAdmin(true); // Reusing state name but logic is Master check
-      fetchData();
+      setIsAdmin(true);
+      fetchAllData();
     }
   };
 
-  const fetchData = async () => {
+  const fetchAllData = async () => {
     setLoading(true);
-    const { data: execs } = await supabase.from('club_executives').select('*').order('generation', { ascending: false });
-    const { data: hists } = await supabase.from('club_history').select('*').order('event_date', { ascending: false });
-    const { data: admins } = await supabase.from('profiles').select('*').eq('role', 'admin');
-    
-    setExecutives(execs || []);
-    setHistories(hists || []);
-    setAdminList(admins || []);
-    
-    // Reset and Load first page of activities
-    setActivityPage(0);
-    setActivities([]);
-    setHasMoreActivities(true);
-    await fetchActivitiesPage(0, true);
-    
+    // Reset all
+    setExecPage(0); setExecutives([]); setHasMoreExecs(true);
+    setHistPage(0); setHistories([]); setHasMoreHists(true);
+    setAdminPage(0); setAdminList([]); setHasMoreAdmins(true);
+    setActivityPage(0); setActivities([]); setHasMoreActivities(true);
+
+    await Promise.all([
+      fetchExecutives(0, true),
+      fetchHistories(0, true),
+      fetchAdmins(0, true),
+      fetchActivities(0, true)
+    ]);
     setLoading(false);
   };
 
-  const fetchActivitiesPage = async (page, reset = false) => {
-    if (loadingActivities) return;
+  // 1. Executives Fetch
+  const fetchExecutives = async (page, reset = false) => {
+    setLoadingExecs(true);
+    try {
+      const { data, error } = await supabase
+        .from('club_executives')
+        .select('*')
+        .order('generation', { ascending: false })
+        .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+      if (error) throw error;
+      if (data) {
+        setExecutives(prev => reset ? data : [...prev, ...data.filter(d => !prev.some(p => p.id === d.id))]);
+        if (data.length < ITEMS_PER_PAGE) setHasMoreExecs(false);
+      }
+    } finally { setLoadingExecs(false); }
+  };
+
+  // 2. History Fetch
+  const fetchHistories = async (page, reset = false) => {
+    setLoadingHists(true);
+    try {
+      const { data, error } = await supabase
+        .from('club_history')
+        .select('*')
+        .order('event_date', { ascending: false })
+        .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+      if (error) throw error;
+      if (data) {
+        setHistories(prev => reset ? data : [...prev, ...data.filter(d => !prev.some(p => p.id === d.id))]);
+        if (data.length < ITEMS_PER_PAGE) setHasMoreHists(false);
+      }
+    } finally { setLoadingHists(false); }
+  };
+
+  // 3. Admins Fetch
+  const fetchAdmins = async (page, reset = false) => {
+    setLoadingAdmins(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'admin')
+        .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
+      if (error) throw error;
+      if (data) {
+        setAdminList(prev => reset ? data : [...prev, ...data.filter(d => !prev.some(p => p.id === d.id))]);
+        if (data.length < ITEMS_PER_PAGE) setHasMoreAdmins(false);
+      }
+    } finally { setLoadingAdmins(false); }
+  };
+
+  // 4. Activities Fetch
+  const fetchActivities = async (page, reset = false) => {
     setLoadingActivities(true);
-    const ITEMS_PER_PAGE = 10;
-    
     try {
       const { data, error } = await supabase
         .from('club_activities')
         .select('*')
         .order('created_at', { ascending: false })
         .range(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE - 1);
-
       if (error) throw error;
-
       if (data) {
-        setActivities(prev => {
-          const filtered = reset ? data : [...prev, ...data.filter(item => !prev.some(p => p.id === item.id))];
-          return filtered;
-        });
+        setActivities(prev => reset ? data : [...prev, ...data.filter(d => !prev.some(p => p.id === d.id))]);
         if (data.length < ITEMS_PER_PAGE) setHasMoreActivities(false);
       }
-    } catch (err) {
-      console.error('Error fetching activities:', err);
-    } finally {
-      setLoadingActivities(false);
-    }
+    } finally { setLoadingActivities(false); }
   };
 
-  const lastActivityRef = (node) => {
-    if (loadingActivities) return;
-    if (activityObserver.current) activityObserver.current.disconnect();
-    activityObserver.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && hasMoreActivities) {
-        setActivityPage(prev => {
+  // Observers
+  const createObserver = (loading, hasMore, setPage, fetchFn) => (node) => {
+    if (loading) return;
+    const observerRef = fetchFn === fetchExecutives ? execObserver : 
+                        fetchFn === fetchHistories ? histObserver : 
+                        fetchFn === fetchAdmins ? adminObserver : activityObserver;
+    
+    if (observerRef.current) observerRef.current.disconnect();
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        setPage(prev => {
           const nextPage = prev + 1;
-          fetchActivitiesPage(nextPage);
+          fetchFn(nextPage);
           return nextPage;
         });
       }
     });
-    if (node) activityObserver.current.observe(node);
+    if (node) observerRef.current.observe(node);
   };
+
+  const lastExecRef = createObserver(loadingExecs, hasMoreExecs, setExecPage, fetchExecutives);
+  const lastHistRef = createObserver(loadingHists, hasMoreHists, setHistPage, fetchHistories);
+  const lastAdminRef = createObserver(loadingAdmins, hasMoreAdmins, setAdminPage, fetchAdmins);
+  const lastActivityRef = createObserver(loadingActivities, hasMoreActivities, setActivityPage, fetchActivities);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -397,8 +462,12 @@ const ManageAbout = () => {
           </div>
 
           <div className="md:col-span-2 space-y-3">
-            {executives.map(item => (
-              <div key={item.id} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center group hover:border-brand-200 transition">
+            {executives.map((item, index) => (
+              <div 
+                key={item.id} 
+                ref={index === executives.length - 1 ? lastExecRef : null}
+                className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center group hover:border-brand-200 transition"
+              >
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-slate-100 overflow-hidden border border-slate-200">
                     {item.image_url && <img src={item.image_url} alt="" className="w-full h-full object-cover" />}
@@ -421,6 +490,11 @@ const ManageAbout = () => {
                 </div>
               </div>
             ))}
+            {loadingExecs && (
+              <div className="flex justify-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-brand-500"></div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -455,8 +529,12 @@ const ManageAbout = () => {
             </div>
           </div>
           <div className="md:col-span-2 space-y-3">
-            {histories.map(item => (
-              <div key={item.id} className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm flex justify-between items-start group hover:border-brand-200 transition">
+            {histories.map((item, index) => (
+              <div 
+                key={item.id} 
+                ref={index === histories.length - 1 ? lastHistRef : null}
+                className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm flex justify-between items-start group hover:border-brand-200 transition"
+              >
                 <div>
                   <p className="font-bold text-brand-600 mb-1">{item.event_date}</p>
                   <h4 className="font-bold text-slate-900 text-lg mb-1">{item.title}</h4>
@@ -471,7 +549,7 @@ const ManageAbout = () => {
                   </p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0 ml-4">
-                  <button onClick={() => handleEditClick(item, 'hist')} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition">
+                  <button onClick={() => handleEditClick(item, 'history')} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition">
                     <PencilIcon className="w-5 h-5" />
                   </button>
                   <button onClick={() => handleDelete('club_history', item.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
@@ -480,6 +558,11 @@ const ManageAbout = () => {
                 </div>
               </div>
             ))}
+            {loadingHists && (
+              <div className="flex justify-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-brand-500"></div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -495,7 +578,7 @@ const ManageAbout = () => {
                   <input 
                     type="email" 
                     placeholder="user@example.com" 
-                    className="w-full p-3 rounded-xl border border-slate-200 focus:border-brand-500 outline-none text-sm" 
+                    className="w-full p-3 rounded-xl border border-slate-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm" 
                     value={adminEmail} 
                     onChange={e => setAdminEmail(e.target.value)} 
                     required 
@@ -512,8 +595,12 @@ const ManageAbout = () => {
           </div>
           <div className="md:col-span-2 space-y-3">
             <h3 className="font-bold text-lg mb-4">현재 관리자 목록</h3>
-            {adminList.map(admin => (
-              <div key={admin.id} className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center group hover:border-brand-200 transition">
+            {adminList.map((admin, index) => (
+              <div 
+                key={admin.id} 
+                ref={index === adminList.length - 1 ? lastAdminRef : null}
+                className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center group hover:border-brand-200 transition"
+              >
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden border border-slate-200">
                     {admin.avatar_url ? (
@@ -539,6 +626,11 @@ const ManageAbout = () => {
                 )}
               </div>
             ))}
+            {loadingAdmins && (
+              <div className="flex justify-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-brand-500"></div>
+              </div>
+            )}
           </div>
         </div>
       )}
