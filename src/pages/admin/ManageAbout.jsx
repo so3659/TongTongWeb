@@ -347,7 +347,15 @@ const ManageAbout = () => {
                 <div>
                   <p className="font-bold text-brand-600 mb-1">{item.event_date}</p>
                   <h4 className="font-bold text-slate-900 text-lg mb-1">{item.title}</h4>
-                  <p className="text-sm text-slate-500 leading-relaxed whitespace-pre-wrap">{item.description}</p>
+                  <p className="text-sm text-slate-500 leading-relaxed whitespace-pre-wrap">
+                    {item.description?.split(/(https?:\/\/[^\s]+)/g).map((part, i) => 
+                      part.match(/^https?:\/\//) ? (
+                        <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline break-all">
+                          {part}
+                        </a>
+                      ) : part
+                    )}
+                  </p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0 ml-4">
                   <button onClick={() => handleEditClick(item, 'hist')} className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition">

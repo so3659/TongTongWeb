@@ -137,7 +137,15 @@ const About = () => {
               
               <div className="flex-1 pb-2">
                 <h3 className="text-lg font-bold text-slate-800 mb-1">{item.title}</h3>
-                <p className="text-slate-500 text-sm leading-relaxed whitespace-pre-wrap">{item.description}</p>
+                <p className="text-slate-500 text-sm leading-relaxed whitespace-pre-wrap">
+                  {item.description?.split(/(https?:\/\/[^\s]+)/g).map((part, i) => 
+                    part.match(/^https?:\/\//) ? (
+                      <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline break-all">
+                        {part}
+                      </a>
+                    ) : part
+                  )}
+                </p>
               </div>
             </motion.div>
           )) : <p className="pl-8 text-slate-400">등록된 연혁이 없습니다.</p>}
