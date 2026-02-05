@@ -373,7 +373,7 @@ const PostDetail = () => {
             </span>
           </div>
 
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-6 leading-tight">
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-6 leading-tight break-all">
             {post.title}
           </h1>
 
@@ -412,7 +412,7 @@ const PostDetail = () => {
             )}
           </div>
 
-          <div className="prose prose-slate max-w-none mb-10 whitespace-pre-wrap leading-relaxed text-slate-700">
+          <div className="prose prose-slate max-w-none mb-10 whitespace-pre-wrap leading-relaxed text-slate-700 break-all">
             {post.content}
           </div>
 

@@ -137,6 +137,17 @@ const PostWrite = () => {
       alert('로그인이 필요합니다.');
       return;
     }
+
+    // Validation: Title & Content Length
+    if (formData.title.length > 50) {
+      alert('제목은 최대 50자까지 입력 가능합니다.');
+      return;
+    }
+    if (formData.content.length > 3000) {
+      alert('본문은 최대 3,000자까지 입력 가능합니다.');
+      return;
+    }
+
     if (formData.category === '공지' && !isAdmin) {
       alert('권한이 없습니다.');
       return;
