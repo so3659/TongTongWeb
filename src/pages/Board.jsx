@@ -6,7 +6,7 @@ import { MegaphoneIcon, FunnelIcon } from '@heroicons/react/24/solid';
 import { format } from 'date-fns';
 import { useBlock } from '../context/BlockContext'; // Import useBlock
 
-const CATEGORIES = ['전체', '공지', '자유', '연습실', '맛집', '번개', '기타'];
+const CATEGORIES = ['전체', '공지', '자유', '연습실', '맛집', '번개', '아이돌', '기타'];
 const PAGE_SIZE = 10;
 
 const PostList = () => {
@@ -25,6 +25,15 @@ const PostList = () => {
   const [sortBy, setSortBy] = useState('latest'); // 'latest' | 'likes'
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchInput, setSearchInput] = useState(''); // Input value state
+
+  // Sync category from URL search params
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const catParam = params.get('category');
+    if (catParam && CATEGORIES.includes(catParam)) {
+      setSelectedCategory(catParam);
+    }
+  }, [location.search]);
 
   // Infinite Scroll Observer
   const observer = useRef();

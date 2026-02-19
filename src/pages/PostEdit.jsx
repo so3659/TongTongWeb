@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PhotoIcon, XMarkIcon, PaperClipIcon, DocumentIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 
-const CATEGORIES = ['자유', '연습실', '맛집', '번개', '기타', '공지'];
+const CATEGORIES = ['자유', '연습실', '맛집', '번개', '기타', '아이돌', '공지'];
 
 const PostEdit = () => {
   const { id } = useParams();
