@@ -39,6 +39,7 @@ yarn-error.log*
 *.sql
 plan.md
 requirement.md
+GEMINI.md
 
 # Sensitive Data / Migrations
 # Preventing database dumps or user data from being uploaded

@@ -82,7 +82,9 @@ const Notifications = () => {
               
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-slate-800 leading-relaxed">
-                  <span className="font-bold">{noti.sender?.nickname || '알 수 없음'}</span>님이 
+                  <span className="font-bold">
+                    {noti.is_anonymous ? '익명의 회원' : (noti.sender?.nickname || '알 수 없음')}
+                  </span>님이 
                   회원님의 {noti.type === 'COMMENT' ? '게시글' : '댓글'}에 
                   {noti.type === 'COMMENT' ? ' 댓글' : ' 답글'}을 남겼습니다.
                 </p>
