@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRightIcon, MegaphoneIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
 import logo from '../assets/image/통통로고 검정.png';
 import { supabase } from '../lib/supabaseClient';
-import { format, startOfMonth, endOfMonth, differenceInDays } from 'date-fns';
+import { format, endOfMonth, differenceInDays, startOfDay } from 'date-fns';
 
 const Home = () => {
   const [notices, setNotices] = useState([]);
@@ -17,7 +17,7 @@ const Home = () => {
       setLoading(true);
       try {
         const today = new Date();
-        const start = startOfMonth(today).toISOString();
+        const start = startOfDay(today).toISOString();
         const end = endOfMonth(today).toISOString();
 
         // 1. Fetch Top 3 Notices
