@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { PencilSquareIcon, ChatBubbleLeftIcon, EyeIcon, HandThumbUpIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { PencilSquareIcon, ChatBubbleLeftIcon, HandThumbUpIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { MegaphoneIcon, FunnelIcon } from '@heroicons/react/24/solid';
 import { format } from 'date-fns';
 import { useBlock } from '../context/BlockContext'; // Import useBlock
@@ -303,7 +303,6 @@ const PostList = () => {
               {post.is_anonymous ? '익명' : post.profiles?.nickname || '알 수 없음'}
             </span>
             <span className="w-0.5 h-2 bg-slate-200"></span>
-            <span className="flex items-center gap-1"><EyeIcon className="w-3.5 h-3.5" /> {post.view_count}</span>
             <span className="flex items-center gap-1"><HandThumbUpIcon className="w-3.5 h-3.5" /> {post.like_count}</span>
           </div>
 

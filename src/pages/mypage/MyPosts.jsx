@@ -86,7 +86,6 @@ const MyPosts = () => {
               </div>
               <h3 className="font-bold text-slate-800 text-lg mb-3">{post.title}</h3>
               <div className="flex gap-3 text-xs text-slate-400">
-                <span>조회 {post.view_count}</span>
                 <span>좋아요 {post.like_count}</span>
               </div>
             </div>

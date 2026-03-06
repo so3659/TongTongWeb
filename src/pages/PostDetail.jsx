@@ -393,7 +393,6 @@ const PostDetail = () => {
                 <p className="font-bold text-slate-900 text-sm">
                   {post.is_anonymous ? '익명' : post.profiles?.nickname}
                 </p>
-                <p className="text-xs text-slate-400">조회 {post.view_count}</p>
               </div>
             </div>
 
