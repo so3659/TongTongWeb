@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { uploadToR2 } from '../lib/r2Upload';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PhotoIcon, XMarkIcon, PaperClipIcon, DocumentIcon } from '@heroicons/react/24/outline';
@@ -46,7 +47,7 @@ const PostWrite = () => {
     setFormData({ ...formData, category: newCat });
   };
 
-  // Image Logic (Existing)
+  // Image Logic
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
     if (selectedFiles.length + files.length > 10) {
@@ -67,17 +68,13 @@ const PostWrite = () => {
     });
   };
 
-  // Attachment Logic (New)
+  // Attachment Logic
   const handleAttachmentChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
-    
-    // Validate Count
     if (selectedFiles.length + attachments.length > 1) {
       alert('첨부파일은 최대 1개까지만 가능합니다.');
       return;
     }
-
-    // Validate Size (5MB)
     const validFiles = selectedFiles.filter(file => {
       if (file.size > 5 * 1024 * 1024) {
         alert(`${file.name} 파일이 5MB를 초과하여 제외되었습니다.`);
@@ -85,7 +82,6 @@ const PostWrite = () => {
       }
       return true;
     });
-
     setAttachments(prev => [...prev, ...validFiles]);
   };
 
@@ -98,13 +94,10 @@ const PostWrite = () => {
     for (const file of files) {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
+      const filePath = `post-images/${user.id}/${fileName}`;
       
-      const { error } = await supabase.storage.from('post-images').upload(filePath, file);
-      if (error) throw error;
-      
-      const { data } = supabase.storage.from('post-images').getPublicUrl(filePath);
-      uploadedUrls.push(data.publicUrl);
+      const publicUrl = await uploadToR2(file, filePath);
+      uploadedUrls.push(publicUrl);
     }
     return uploadedUrls;
   };
@@ -113,18 +106,14 @@ const PostWrite = () => {
     const uploadedMetadata = [];
     for (const file of attachments) {
       const fileExt = file.name.split('.').pop();
-      // Use random name for storage path to avoid encoding issues with Korean names
       const randomName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-      const filePath = `${user.id}/${randomName}`;
+      const filePath = `post-attachments/${user.id}/${randomName}`;
 
-      const { error } = await supabase.storage.from('post-attachments').upload(filePath, file);
-      if (error) throw error;
-
-      const { data } = supabase.storage.from('post-attachments').getPublicUrl(filePath);
+      const publicUrl = await uploadToR2(file, filePath);
       
       uploadedMetadata.push({
-        name: file.name, // Preserve original name for display
-        url: data.publicUrl,
+        name: file.name,
+        url: publicUrl,
         size: file.size
       });
     }
@@ -138,7 +127,6 @@ const PostWrite = () => {
       return;
     }
 
-    // Validation: Title & Content Length
     if (formData.title.length > 50) {
       alert('제목은 최대 50자까지 입력 가능합니다.');
       return;
@@ -155,15 +143,12 @@ const PostWrite = () => {
     setLoading(true);
 
     try {
-      // 1. Upload Images
       let mediaUrls = [];
       if (files.length > 0) mediaUrls = await uploadImages();
 
-      // 2. Upload Attachments
       let attachmentData = [];
       if (attachments.length > 0) attachmentData = await uploadAttachments();
 
-      // 3. Insert Post
       const { error } = await supabase
         .from('posts')
         .insert([
@@ -179,7 +164,6 @@ const PostWrite = () => {
         ]);
 
       if (error) throw error;
-      
       navigate('/board');
     } catch (error) {
       alert('게시글 작성 실패: ' + error.message);

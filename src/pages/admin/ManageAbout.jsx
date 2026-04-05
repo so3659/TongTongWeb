@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { uploadToR2 } from '../../lib/r2Upload';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { TrashIcon, PencilIcon, PlusIcon, PhotoIcon } from '@heroicons/react/24/outline';
@@ -216,20 +217,9 @@ const ManageAbout = () => {
     let imageUrl = execForm.image_url;
 
     if (imageFile) {
-      // 1. Storage Cleanup (Old Image if exists)
-      if (editingId && execForm.image_url) {
-        try {
-          const path = execForm.image_url.split('/executive-images/')[1];
-          if (path) await supabase.storage.from('executive-images').remove([path]);
-        } catch (err) { console.error('Old image cleanup failed:', err); }
-      }
-
-      // 2. Upload New Image
       const fileName = `exec_${Date.now()}_${imageFile.name}`;
-      const { data, error } = await supabase.storage.from('executive-images').upload(fileName, imageFile);
-      if (error) return alert('이미지 업로드 실패');
-      const { data: urlData } = supabase.storage.from('executive-images').getPublicUrl(fileName);
-      imageUrl = urlData.publicUrl;
+      const filePath = `executive-images/${fileName}`;
+      imageUrl = await uploadToR2(imageFile, filePath);
     }
 
     const payload = { ...execForm, image_url: imageUrl };
@@ -256,32 +246,10 @@ const ManageAbout = () => {
     let imageUrl = activityForm.image_url;
 
     if (imageFile) {
-      // 1. Storage Cleanup (Old Image if exists)
-      if (editingId && activityForm.image_url) {
-        try {
-          const path = activityForm.image_url.split('/activity-images/')[1];
-          if (path) await supabase.storage.from('activity-images').remove([path]);
-        } catch (err) { console.error('Old image cleanup failed:', err); }
-      }
-
-      // 2. Upload New Image
       const cleanFileName = imageFile.name.replace(/[^\x00-\x7F]/g, '');
       const fileName = `activity_${Date.now()}_${cleanFileName || 'image'}`;
-      
-      const { data, error: uploadError } = await supabase.storage
-        .from('activity-images')
-        .upload(fileName, imageFile, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      if (uploadError) {
-        console.error('Upload Error Details:', uploadError);
-        return alert(`이미지 업로드 실패: ${uploadError.message} (버킷 존재 여부를 확인해주세요)`);
-      }
-
-      const { data: urlData } = supabase.storage.from('activity-images').getPublicUrl(fileName);
-      imageUrl = urlData.publicUrl;
+      const filePath = `activity-images/${fileName}`;
+      imageUrl = await uploadToR2(imageFile, filePath);
     } else if (!imageUrl) {
       return alert('이미지를 선택해주세요.');
     }

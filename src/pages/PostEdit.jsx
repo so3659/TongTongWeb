@@ -146,24 +146,20 @@ const PostEdit = () => {
     for (const file of newImages) {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
-      const { error } = await supabase.storage.from('post-images').upload(filePath, file);
-      if (error) throw error;
-      const { data } = supabase.storage.from('post-images').getPublicUrl(filePath);
-      uploadedImages.push(data.publicUrl);
+      const filePath = `post-images/${user.id}/${fileName}`;
+      const publicUrl = await uploadToR2(file, filePath);
+      uploadedImages.push(publicUrl);
     }
 
     // 2. Upload New Attachments
     for (const file of newAttachments) {
       const fileExt = file.name.split('.').pop();
       const randomName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-      const filePath = `${user.id}/${randomName}`;
-      const { error } = await supabase.storage.from('post-attachments').upload(filePath, file);
-      if (error) throw error;
-      const { data } = supabase.storage.from('post-attachments').getPublicUrl(filePath);
+      const filePath = `post-attachments/${user.id}/${randomName}`;
+      const publicUrl = await uploadToR2(file, filePath);
       uploadedAttachments.push({
         name: file.name,
-        url: data.publicUrl,
+        url: publicUrl,
         size: file.size
       });
     }
@@ -171,19 +167,9 @@ const PostEdit = () => {
     return { uploadedImages, uploadedAttachments };
   };
 
-  const cleanupStorage = async () => {
-    for (const file of filesToDelete) {
-      const path = file.url.split(`/${file.bucket}/`)[1];
-      if (path) {
-        await supabase.storage.from(file.bucket).remove([path]);
-      }
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validation: Title & Content Length
     if (formData.title.length > 50) {
       alert('제목은 최대 50자까지 입력 가능합니다.');
       return;
@@ -215,8 +201,6 @@ const PostEdit = () => {
         .eq('id', id);
 
       if (error) throw error;
-
-      await cleanupStorage();
       
       alert('게시글이 수정되었습니다.');
       navigate(`/board/${id}`);

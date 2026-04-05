@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { uploadToR2 } from '../../lib/r2Upload';
 import { useAuth } from '../../context/AuthContext';
 import { motion } from 'framer-motion';
 import { UserCircleIcon, ArrowRightOnRectangleIcon, CameraIcon, PencilIcon, CheckIcon, XMarkIcon, DocumentTextIcon, ChatBubbleLeftRightIcon, NoSymbolIcon, ChevronRightIcon, LockClosedIcon, UserMinusIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
@@ -44,19 +45,10 @@ const MyPageMain = () => {
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}_${Date.now()}.${fileExt}`;
-      const filePath = fileName; 
+      const filePath = `profile-images/${fileName}`; 
 
-      const { error: uploadError } = await supabase.storage
-        .from('profile-images')
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage
-        .from('profile-images')
-        .getPublicUrl(filePath);
-
-      const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
+      // Upload to Cloudflare R2
+      const publicUrl = await uploadToR2(file, filePath);
 
       const { error: updateError } = await supabase
         .from('profiles')
@@ -65,15 +57,8 @@ const MyPageMain = () => {
 
       if (updateError) throw updateError;
 
-      if (profile?.avatar_url) {
-        try {
-          const oldUrl = new URL(profile.avatar_url);
-          const pathParts = oldUrl.pathname.split('/profile-images/');
-          if (pathParts.length > 1) {
-            await supabase.storage.from('profile-images').remove([pathParts[1]]);
-          }
-        } catch (err) { console.error(err); }
-      }
+      // Note: Old Supabase Storage cleanup or R2 cleanup could be added here
+      // but for this migration, we focus on switching the upload destination.
 
       setProfile(prev => ({ ...prev, avatar_url: publicUrl }));
       alert('프로필 사진이 변경되었습니다.');
