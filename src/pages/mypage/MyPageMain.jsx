@@ -127,6 +127,18 @@ const MyPageMain = () => {
       });
       if (signInError) throw new Error('비밀번호가 일치하지 않습니다.');
 
+      // 1. Storage Cleanup (Profile Image)
+      if (profile?.avatar_url) {
+        try {
+          const oldUrl = new URL(profile.avatar_url);
+          const pathParts = oldUrl.pathname.split('/profile-images/');
+          if (pathParts.length > 1) {
+            await supabase.storage.from('profile-images').remove([pathParts[1]]);
+          }
+        } catch (err) { console.error('Storage cleanup failed during withdrawal:', err); }
+      }
+
+      // 2. Database Withdrawal
       const { error: rpcError } = await supabase.rpc('withdraw_user');
       if (rpcError) throw rpcError;
 

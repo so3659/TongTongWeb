@@ -216,6 +216,15 @@ const ManageAbout = () => {
     let imageUrl = execForm.image_url;
 
     if (imageFile) {
+      // 1. Storage Cleanup (Old Image if exists)
+      if (editingId && execForm.image_url) {
+        try {
+          const path = execForm.image_url.split('/executive-images/')[1];
+          if (path) await supabase.storage.from('executive-images').remove([path]);
+        } catch (err) { console.error('Old image cleanup failed:', err); }
+      }
+
+      // 2. Upload New Image
       const fileName = `exec_${Date.now()}_${imageFile.name}`;
       const { data, error } = await supabase.storage.from('executive-images').upload(fileName, imageFile);
       if (error) return alert('이미지 업로드 실패');
@@ -238,7 +247,7 @@ const ManageAbout = () => {
     else {
       alert(editingId ? '수정되었습니다.' : '등록되었습니다.');
       handleCancelEdit();
-      fetchData();
+      fetchAllData();
     }
   };
 
@@ -247,7 +256,15 @@ const ManageAbout = () => {
     let imageUrl = activityForm.image_url;
 
     if (imageFile) {
-      // 파일명에서 한글 및 특수문자 제거 (안정성 확보)
+      // 1. Storage Cleanup (Old Image if exists)
+      if (editingId && activityForm.image_url) {
+        try {
+          const path = activityForm.image_url.split('/activity-images/')[1];
+          if (path) await supabase.storage.from('activity-images').remove([path]);
+        } catch (err) { console.error('Old image cleanup failed:', err); }
+      }
+
+      // 2. Upload New Image
       const cleanFileName = imageFile.name.replace(/[^\x00-\x7F]/g, '');
       const fileName = `activity_${Date.now()}_${cleanFileName || 'image'}`;
       
@@ -284,7 +301,7 @@ const ManageAbout = () => {
     else {
       alert(editingId ? '수정되었습니다.' : '등록되었습니다.');
       handleCancelEdit();
-      fetchData();
+      fetchAllData();
     }
   };
 
@@ -359,8 +376,32 @@ const ManageAbout = () => {
 
   const handleDelete = async (table, id) => {
     if (!confirm('정말 삭제하시겠습니까?')) return;
-    await supabase.from(table).delete().eq('id', id);
-    fetchData();
+
+    try {
+      // Storage Cleanup before DB deletion
+      if (table === 'club_executives') {
+        const { data } = await supabase.from('club_executives').select('image_url').eq('id', id).single();
+        if (data?.image_url) {
+          const path = data.image_url.split('/executive-images/')[1];
+          if (path) await supabase.storage.from('executive-images').remove([path]);
+        }
+      } else if (table === 'club_activities') {
+        const { data } = await supabase.from('club_activities').select('image_url').eq('id', id).single();
+        if (data?.image_url) {
+          const path = data.image_url.split('/activity-images/')[1];
+          if (path) await supabase.storage.from('activity-images').remove([path]);
+        }
+      }
+
+      const { error } = await supabase.from(table).delete().eq('id', id);
+      if (error) throw error;
+      
+      alert('삭제되었습니다.');
+      fetchAllData(); // Note: Original code used fetchData() but it's defined as fetchAllData()
+    } catch (error) {
+      console.error('Delete Error:', error);
+      alert('삭제 중 오류가 발생했습니다.');
+    }
   };
 
   if (!isAdmin) return null;
